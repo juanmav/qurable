@@ -118,7 +118,8 @@ GET /users/{user_id}/coupons
 
 ### Pseudocode Critial Operations
 
-```Assign Coupon Code:
+Assign Coupon Code:
+```
 begin transaction
 fetch random available coupon from CouponCodes where assigned_user_id is NULL limit 1 for update
 if coupon exists:
@@ -126,7 +127,8 @@ if coupon exists:
 commit transaction
 ```
 
-```Lock Coupon:
+Lock Coupon:
+```
 begin transaction
 select coupon for update
 if coupon.assigned_user_id == user_id and not coupon.is_locked and not coupon.is_redeemed:
@@ -134,7 +136,8 @@ if coupon.assigned_user_id == user_id and not coupon.is_locked and not coupon.is
 commit transaction
 ```
 
-```Redeem Coupon:
+Redeem Coupon:
+```
 begin transaction
 select coupon for update
 if coupon.assigned_user_id == user_id and coupon.is_locked and not coupon.is_redeemed:
@@ -145,6 +148,39 @@ commit transaction
 ### Concurrency Handling
 
 - Use database transactions and row-level locking (SELECT FOR UPDATE) to handle concurrent redemption.
+
+Pseudocode how to handle the concurrency and collisions:
+
+```
+BEGIN TRANSACTION
+
+# Attempt to lock coupon exclusively for User A
+coupon = SELECT * FROM CouponCodes WHERE code='CODE123' FOR UPDATE;
+
+IF coupon.is_redeemed OR coupon.is_locked:
+    # Redemption fails immediately
+    RETURN ERROR "Coupon already redeemed or locked"
+ELSE IF coupon.assigned_user_id != UserA.id:
+    # Coupon not assigned to this user
+    RETURN ERROR "Coupon not assigned to user"
+ELSE:
+    coupon.is_locked = TRUE
+    coupon.locked_at = NOW()
+
+COMMIT TRANSACTION
+
+# Complete redemption after temporary lock
+BEGIN TRANSACTION
+
+coupon = SELECT * FROM CouponCodes WHERE code='CODE123' FOR UPDATE;
+
+IF coupon.is_locked AND NOT coupon.is_redeemed AND coupon.assigned_user_id == UserA.id:
+    coupon.is_redeemed = TRUE
+    coupon.redeemed_at = NOW()
+    coupon.is_locked = FALSE
+
+COMMIT TRANSACTION
+```
  
 ### Security & Performance Considerations
  
@@ -167,4 +203,4 @@ Usually a prefer to create cloud agnostic solutions. Therefore, I would propose 
 - If more scalability is needed, we could use multiple read replicas and sharding.
 - In memory caching could be used to reduce database load.
 
-This aproach allows to create a good enough solution for the problem, and it is scalable enough if the system grows even more the design should be revisited. 
+This approach allows to create a good enough solution for the problem, and it is scalable enough if the system grows even more the design should be revisited. 
